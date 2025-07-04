@@ -114,6 +114,9 @@ LOGIN_REDIRECT_URL = 'reservation:lounge_list'
 LOGOUT_REDIRECT_URL = 'login:login'
 
 STATIC_URL = '/static/'
+
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
 STATICFILES_DIRS = [
     BASE_DIR / 'static',  
 ]
