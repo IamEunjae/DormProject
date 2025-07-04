@@ -1,0 +1,51 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>기숙사 라운지 예약 시스템</title>
+  <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+</head>
+<body>
+  {% if user.is_authenticated %}
+    <p>안녕하세요, {{ user.name }}님 ({{ user.student_number }})</p>
+    <form method="post" action="{% url 'login:logout' %}" style="display:inline;">
+      {% csrf_token %}
+      <button type="submit" class="btn-logout">로그아웃</button>
+    </form>
+  {% else %}
+    <a href="{% url 'login:login' %}">로그인</a>
+  {% endif %}
+
+  <h1>기숙사 라운지 예약 시스템</h1>
+  <p>이용 가능 시간: 오후 5시 ~ 오후 11시, 한 번에 30분</p>
+
+  {% if not allowed %}
+    <p class="global-warning">예약 가능한 시간이 아닙니다.</p>
+  {% endif %}
+
+  <div class="lounges">
+    {% for info in infos %}
+      <div class="lounge-card {{ info.state }}">
+        <h2>라운지 {{ info.number }}</h2>
+        {% if info.state == 'free' %}
+          <p class="status free">비어 있음</p>
+          <form method="post" action="{% url 'reservation:reserve_lounge' info.number %}">
+            {% csrf_token %}
+            <input type="text" name="partners" placeholder="추가 참여자 학번(쉼표 구분)" class="input-partners">
+            <button type="submit" class="btn primary" {% if not allowed %}disabled{% endif %}>예약하기</button>
+          </form>
+        {% elif info.state == 'using' %}
+          <p class="status using">본인이 사용 중</p>
+          <p class="remaining">남은 시간: {{ info.remaining }}</p>
+          <p class="participants">참여자: {% for u in info.participants %}{{ u.student_number }} {{ u.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+        {% else %}
+          <p class="status busy">다른 사람 사용 중</p>
+          <p class="remaining">남은 시간: {{ info.remaining }}</p>
+          <button class="btn" disabled>예약 불가</button>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+</body>
+</html>

@@ -1,0 +1,57 @@
+.lounges {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+}
+.lounge-card {
+    border: 2px solid;
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    position: relative;
+}
+/* 상태별 색상 */
+.lounge-card.free { background: #d4edda; border-color: #c3e6cb; }
+.lounge-card.busy { background: #f8d7da; border-color: #f5c6cb; }
+.lounge-card.using { background: #d1ecf1; border-color: #bee5eb; }
+
+.status { font-weight: bold; margin-bottom: 0.5rem; }
+.status.free { color: green; }
+.status.busy { color: red; }
+.status.using { color: #0c5460; }
+
+.remaining, .participants {
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+    color: #555;
+}
+
+.global-warning {
+    color: red;
+    font-size: 1.8rem;
+    font-weight: bold;
+    margin: 0.5rem 0;
+}
+
+.input-partners {
+    width: calc(100% - 2rem);
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.btn { padding: 0.5rem 1rem; border: none; border-radius: 4px; font-size: 1rem; }
+.btn.primary { background-color: #007bff; color: white; cursor: pointer; }
+.btn:disabled { background-color: #ccc; cursor: not-allowed; }
+
+.btn-logout {
+    background: none;
+    border: 1px solid #666;
+    border-radius: 4px;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
