@@ -110,7 +110,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 AUTH_USER_MODEL = 'login.CustomUser'
 LOGIN_URL = 'login:login'
-LOGIN_REDIRECT_URL = 'reservation:lounge_list'
+LOGIN_REDIRECT_URL = 'reservation:schedule'
 LOGOUT_REDIRECT_URL = 'login:login'
 
 STATIC_URL = '/static/'
