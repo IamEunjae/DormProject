@@ -74,39 +74,4 @@
             {% if lg.number == 1 %}
               라운지 A
             {% elif lg.number == 2 %}
-              라운지 G
-            {% else %}
-              라운지 {{ lg.number }}
-            {% endif %}
-          </th>
-        {% endfor %}
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in grid %}
-        <tr>
-          <td><b>{{ row.label }}</b></td>
-          {% for cell in row.cells %}
-            <td class="{% if cell.reserved %}cell-reserved{% else %}cell-free{% endif %}">
-              {% if cell.reserved %}
-                <div>{{ cell.by|default:"-" }}</div>
-                <button class="btn" disabled>예약 불가</button>
-              {% else %}
-                <form method="post" action="{% url 'reservation:reserve_slot' cell.number cell.start_key %}" autocomplete="off">
-                  {% csrf_token %}
-                  <input name="names" class="names" placeholder="신청자 이름들(쉼표 구분)" {% if cell.disabled %}disabled{% endif %}>
-                  <button type="submit" class="btn primary" {% if cell.disabled %}disabled{% endif %}>
-                    {% if cell.disabled %}마감{% else %}예약{% endif %}
-                  </button>
-                </form>
-              {% endif %}
-            </td>
-          {% endfor %}
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% endif %}
-</div>
-</body>
-</html>
+              라운지
