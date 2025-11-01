@@ -5,7 +5,6 @@ import json
 import os
 from typing import List, Optional
 from datetime import timedelta
-
 import gspread
 from google.oauth2.service_account import Credentials
 
