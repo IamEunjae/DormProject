@@ -2,14 +2,14 @@
 from __future__ import annotations
 
 from datetime import datetime, time as dtime, timedelta
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
-from django.urls import reverse  # ✅ 역참조 사용
+from django.urls import reverse
 
 from .models import Lounge, Reservation
 
@@ -49,7 +49,6 @@ def allowed_starts_for_date(target_date) -> List[datetime]:
 
 
 def _build_slots_for_date(target_date):
-    # 화면 표시용: 허용 시작시각 그대로 사용
     return allowed_starts_for_date(target_date)
 
 
@@ -65,15 +64,16 @@ def reservation_page(request):
     else:
         target_date = timezone.localdate()
 
+    # 시간 슬롯과 라운지 목록
     slots: List[datetime] = _build_slots_for_date(target_date)
     lounges = list(Lounge.objects.all().order_by("id"))
 
-    # 라운지 표시 라벨 (A, G 고정)
+    # 라벨: 라운지 A / 라운지 G (앞 두 칸 고정)
     for idx, lg in enumerate(lounges):
         label = "A" if idx == 0 else ("G" if idx == 1 else chr(ord("A") + idx))
         setattr(lg, "display_label", f"라운지 {label}")
 
-    # 하루 범위 계산
+    # 하루 범위
     if slots:
         day_start = slots[0]
         day_end = slots[-1] + timedelta(minutes=SLOT_MINUTES)
@@ -81,44 +81,52 @@ def reservation_page(request):
         day_start = timezone.now()
         day_end = day_start + timedelta(minutes=SLOT_MINUTES)
 
+    # 해당 날짜의 모든 예약
     reservations = (
         Reservation.objects
         .filter(start_time__gte=day_start, end_time__lte=day_end)
         .select_related("lounge", "user")
     )
 
-    # (lounge_id, start_time) -> reservation
-    cell_map: Dict[tuple, Reservation | None] = {}
-    for lg in lounges:
-        for st in slots:
-            cell_map[(lg.id, st)] = None
-    for r in reservations:
-        cell_map[(r.lounge_id, r.start_time)] = r
+    # 빠른 인덱싱용 맵
+    slot_index = {st: i for i, st in enumerate(slots)}
+    lounge_index = {lg.id: j for j, lg in enumerate(lounges)}
 
-    # (시작, 종료) 쌍
-    slot_pairs: List[Tuple[datetime, datetime]] = [
-        (st, st + timedelta(minutes=SLOT_MINUTES)) for st in slots
+    # grid[row][col] = Reservation | None
+    grid: List[List[Reservation | None]] = [
+        [None for _ in lounges] for _ in slots
     ]
+    for r in reservations:
+        i = slot_index.get(r.start_time)
+        j = lounge_index.get(r.lounge_id)
+        if i is not None and j is not None:
+            grid[i][j] = r
 
-    # 인사말 표시용 이름
+    # rows: [(start, end, [(lounge, reservation), ... ]), ...]
+    rows: List[Tuple[datetime, datetime, list]] = []
+    for i, st in enumerate(slots):
+        end = st + timedelta(minutes=SLOT_MINUTES)
+        pairs = [(lounges[j], grid[i][j]) for j in range(len(lounges))]
+        rows.append((st, end, pairs))
+
+    # 인사말 표기 (항상 존재하는 get_username 사용)
+    try:
+        account_id = request.user.get_username()
+    except Exception:
+        account_id = str(request.user)
+
     full_name = ""
     if hasattr(request.user, "get_full_name"):
         try:
             full_name = request.user.get_full_name() or ""
         except Exception:
             full_name = ""
-    try:
-        account_id = request.user.get_username()
-    except Exception:
-        account_id = str(request.user)
     display_name = full_name or account_id
 
     ctx = {
         "target_date": target_date,
-        "slots": slots,
-        "slot_pairs": slot_pairs,
+        "rows": rows,                 # ✅ 템플릿은 rows만 보면 됨
         "lounges": lounges,
-        "cell_map": cell_map,
         "display_name": display_name,
         "account_id": account_id,
     }
@@ -156,17 +164,20 @@ def make_reservation(request):
         messages.error(request, "시작 시간이 올바르지 않습니다.")
         return redirect("reservation_page")
 
+    # 허용 슬롯 검증
     allowed = allowed_starts_for_date(start_dt.date())
     if start_dt not in allowed:
         messages.error(request, "허용된 시간대가 아닙니다.")
         return redirect(f"{reverse('reservation_page')}?date={start_dt.date().isoformat()}")
 
+    # 과거 시간 제한
     if start_dt < timezone.now():
         messages.error(request, "이미 지난 시간은 예약할 수 없습니다.")
         return redirect(f"{reverse('reservation_page')}?date={start_dt.date().isoformat()}")
 
     end_dt = start_dt + timedelta(minutes=SLOT_MINUTES)
 
+    # 중복/겹침 체크 (라운지, 같은 슬롯)
     exists = Reservation.objects.filter(
         lounge=lounge, start_time=start_dt, end_time=end_dt
     ).exists()
@@ -174,6 +185,7 @@ def make_reservation(request):
         messages.error(request, "이미 예약된 슬롯입니다.")
         return redirect(f"{reverse('reservation_page')}?date={start_dt.date().isoformat()}")
 
+    # 본인 예약 겹침 체크
     overlap_my = Reservation.objects.filter(
         user=request.user,
         start_time__lt=end_dt,
@@ -183,6 +195,7 @@ def make_reservation(request):
         messages.error(request, "본인 예약과 시간이 겹칩니다.")
         return redirect(f"{reverse('reservation_page')}?date={start_dt.date().isoformat()}")
 
+    # 생성
     Reservation.objects.create(
         user=request.user,
         lounge=lounge,
@@ -201,16 +214,14 @@ def cancel_reservation(request, reservation_id: int):
         return redirect("reservation_page")
 
     reservation = get_object_or_404(Reservation, id=reservation_id)
-
     if reservation.user_id != request.user.id:
         messages.error(request, "본인 예약만 취소할 수 있습니다.")
         return redirect("reservation_page")
 
-    reservation.delete()
-    messages.success(request, "예약이 취소되었습니다.")
-
     date_str = reservation.start_time.astimezone(
         timezone.get_current_timezone()
     ).date().isoformat()
-    # ✅ 하드코딩 대신 reverse 사용
+
+    reservation.delete()
+    messages.success(request, "예약이 취소되었습니다.")
     return redirect(f"{reverse('reservation_page')}?date={date_str}")

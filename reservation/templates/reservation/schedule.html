@@ -73,48 +73,39 @@
       </tr>
     </thead>
     <tbody>
-      {# slot_pairs: (start, end) #}
-      {% for st, end in slot_pairs %}
+      {# rows: (start, end, [(lounge, reservation), ...]) #}
+      {% for st, end, pairs in rows %}
         <tr>
           <td class="row-time">{{ st|date:"H:i" }} ~ {{ end|date:"H:i" }}</td>
 
-          {% for lg in lounges %}
-            {% with reservation=None %}
-              {# cell_map은 키를 (lounge_id, start_time) 튜플로 가짐. items를 돌며 찾는다. #}
-              {% for k, v in cell_map.items %}
-                {% if k.0 == lg.id and k.1 == st %}
-                  {% with reservation=v %}{% endwith %}
-                {% endif %}
-              {% endfor %}
+          {% for lg, reservation in pairs %}
+            <td class="slot-cell">
+              {% if reservation %}
+                <div style="margin-bottom:6px;">
+                  예약자: {{ reservation.user.get_full_name|default:reservation.user.get_username }}
+                </div>
 
-              <td class="slot-cell">
-                {% if reservation %}
-                  <div style="margin-bottom:6px;">
-                    예약자: {{ reservation.user.get_full_name|default:reservation.user.get_username }}
-                  </div>
-
-                  {% if reservation.user_id == request.user.id %}
-                    <form method="post" action="{% url 'cancel_reservation' reservation.id %}">
-                      {% csrf_token %}
-                      <button type="submit" class="btn btn-danger"
-                        onclick="return confirm('정말 삭제하시겠습니까?');">
-                        삭제
-                      </button>
-                    </form>
-                  {% else %}
-                    <button class="btn btn-disabled" disabled>예약 불가</button>
-                  {% endif %}
-                {% else %}
-                  <form method="post" action="{% url 'make_reservation' %}">
+                {% if reservation.user_id == request.user.id %}
+                  <form method="post" action="{% url 'cancel_reservation' reservation.id %}">
                     {% csrf_token %}
-                    <input type="hidden" name="lounge_id" value="{{ lg.id }}">
-                    <input type="hidden" name="start" value="{{ st|date:'Y-m-d H:i:s' }}">
-                    <input class="input" type="text" name="applicant" placeholder="신청자 이름들(쉼표 구분)">
-                    <button type="submit" class="btn btn-primary" style="margin-left:8px;">예약</button>
+                    <button type="submit" class="btn btn-danger"
+                      onclick="return confirm('정말 삭제하시겠습니까?');">
+                      삭제
+                    </button>
                   </form>
+                {% else %}
+                  <button class="btn btn-disabled" disabled>예약 불가</button>
                 {% endif %}
-              </td>
-            {% endwith %}
+              {% else %}
+                <form method="post" action="{% url 'make_reservation' %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="lounge_id" value="{{ lg.id }}">
+                  <input type="hidden" name="start" value="{{ st|date:'Y-m-d H:i:s' }}">
+                  <input class="input" type="text" name="applicant" placeholder="신청자 이름들(쉼표 구분)">
+                  <button type="submit" class="btn btn-primary" style="margin-left:8px;">예약</button>
+                </form>
+              {% endif %}
+            </td>
           {% endfor %}
         </tr>
       {% endfor %}
