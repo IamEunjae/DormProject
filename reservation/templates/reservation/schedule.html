@@ -8,27 +8,45 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: sans-serif; margin: 30px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-    th, td { border: 1px solid #e5e7eb; padding: 10px; text-align: center; }
-    .btn { padding: 8px 12px; border-radius: 6px; border: none; cursor: pointer; }
+    h1 { margin-bottom: 8px; }
+    .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; }
+    .hello { color:#111827; font-weight:600; }
+    .notice { background:#fffbeb; border:1px solid #fde68a; padding:14px; border-radius:10px; margin: 10px 0 8px; }
+    .rule { color:#6b7280; font-size: 14px; margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+    th, td { border: 1px solid #e5e7eb; padding: 12px; text-align: center; }
+    th { background:#f9fafb; }
+    .slot-cell { background:#f3faf3; } /* 기존 연한 초록 느낌 */
+    .btn { padding: 8px 12px; border-radius: 8px; border: none; cursor: pointer; }
     .btn-primary { background:#3b82f6; color:white; }
     .btn-danger  { background:#ef4444; color:white; }
     .btn-disabled { background:#e5e7eb; color:#6b7280; cursor:not-allowed;}
-    .notice { background:#fff7ed; border:1px solid #fed7aa; padding:12px; border-radius:8px; margin-bottom:16px;}
+    .input { width: 90%; padding:8px 10px; border:1px solid #d1d5db; border-radius:8px; }
+    .row-time { white-space: nowrap; width:180px; }
     .msg { margin: 8px 0; color: #2563eb; }
+    .controls { margin: 10px 0; }
   </style>
 </head>
 <body>
-  <h1>기숙사 라운지 예약 (30분 슬롯)</h1>
+
+  <div class="topbar">
+    <h1>기숙사 라운지 예약 (30분 슬롯)</h1>
+    <div class="hello">
+      안녕하세요, {{ request.user.get_full_name|default:request.user.username }}님 ({{ request.user.username }})
+    </div>
+  </div>
 
   <div class="notice">
-    <ol style="margin:0; padding-left:18px; line-height:1.6;">
-      <li>학습 용도만 이용 (당일 예약)</li>
-      <li>예약은 최대 30분입니다. 뒤에 예약자가 없으면 30분 추가 가능</li>
+    <ol style="margin:0; padding-left:18px; line-height:1.65;">
+      <li>학습 용도만 이용(당일 예약)</li>
+      <li>예약은 최대 30분입니다. (3학년 제외) 뒤에 예약자가 없을 경우 30분 단위로 추가 연장 가능</li>
+      <li>선생님께 "라운지 신청했습니다" 연락하고 사용하기</li>
       <li>23:30 이후 이용 불가</li>
-      <li>시간 미준수, 미사용 시 이용 제한</li>
+      <li>시간 미준수, 뒷정리(소등, 에어컨 off, 문개방) 미흡 및 예약 후 미사용 시 이용 제한</li>
+      <li>신청 가능한 시간 외 이용 시 선생님께 허락 받고 사용하기</li>
     </ol>
   </div>
+  <div class="rule">일요일: 22:00~23:30 (3칸) / 월~목: 21:30~23:30 (4칸) / 금·토: 예약 불가</div>
 
   {% if messages %}
     <div class="msg">
@@ -38,38 +56,37 @@
     </div>
   {% endif %}
 
-  <form method="get" action="">
+  <form class="controls" method="get" action="">
     <label>날짜:
       <input type="date" name="date" value="{{ target_date|date:'Y-m-d' }}">
     </label>
-    <button class="btn btn-primary" type="submit">이동</button>
+    <button class="btn btn-primary" type="submit">날짜 이동</button>
   </form>
 
   <table>
     <thead>
       <tr>
-        <th style="width:180px;">시간</th>
+        <th class="row-time">시간</th>
         {% for lg in lounges %}
-          <th>{{ lg.name }}</th>
+          <th>{{ lounge_labels.lg.id|default:('라운지 ' ~ forloop.counter0|yesno:"A,G") }}</th>
         {% endfor %}
       </tr>
     </thead>
     <tbody>
-      {# ✅ slot_pairs: (시작, 종료) 튜플 리스트 #}
+      {# slot_pairs: (start, end) #}
       {% for st, end in slot_pairs %}
         <tr>
-          <td>{{ st|date:"H:i" }} ~ {{ end|date:"H:i" }}</td>
+          <td class="row-time">{{ st|date:"H:i" }} ~ {{ end|date:"H:i" }}</td>
 
           {% for lg in lounges %}
             {% with reservation=None %}
-              {# 템플릿에서 dict의 튜플키 직접 접근이 어려워 items를 돌려 찾는다 #}
               {% for k, v in cell_map.items %}
                 {% if k.0 == lg.id and k.1 == st %}
                   {% with reservation=v %}{% endwith %}
                 {% endif %}
               {% endfor %}
 
-              <td>
+              <td class="slot-cell">
                 {% if reservation %}
                   <div style="margin-bottom:6px;">
                     예약자: {{ reservation.user.get_full_name|default:reservation.user.username }}
@@ -79,8 +96,8 @@
                     <form method="post" action="{% url 'cancel_reservation' reservation.id %}">
                       {% csrf_token %}
                       <button type="submit" class="btn btn-danger"
-                        onclick="return confirm('정말 예약을 취소하시겠습니까?');">
-                        예약 취소
+                        onclick="return confirm('정말 삭제하시겠습니까?');">
+                        삭제
                       </button>
                     </form>
                   {% else %}
@@ -91,7 +108,8 @@
                     {% csrf_token %}
                     <input type="hidden" name="lounge_id" value="{{ lg.id }}">
                     <input type="hidden" name="start" value="{{ st|date:'Y-m-d H:i:s' }}">
-                    <button type="submit" class="btn btn-primary">예약</button>
+                    <input class="input" type="text" name="applicant" placeholder="신청자 이름들(쉼표 구분)">
+                    <button type="submit" class="btn btn-primary" style="margin-left:8px;">예약</button>
                   </form>
                 {% endif %}
               </td>

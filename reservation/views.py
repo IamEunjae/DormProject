@@ -65,7 +65,7 @@ def reservation_page(request):
         target_date = timezone.localdate()
 
     slots = _build_slots_for_date(target_date)
-    lounges = Lounge.objects.all().order_by("id")
+    lounges = list(Lounge.objects.all().order_by("id"))
 
     # 하루 범위 계산
     if slots:
@@ -89,19 +89,27 @@ def reservation_page(request):
     for r in reservations:
         cell_map[(r.lounge_id, r.start_time)] = r
 
-    # ✅ 템플릿에서 종료시간을 안전하게 쓰도록 (시작, 종료) 튜플 제공
-    slot_pairs: List[Tuple[datetime, datetime]] = [
-        (st, st + timedelta(minutes=SLOT_MINUTES)) for st in slots
-    ]
+    # (시작, 종료) 쌍
+    slot_pairs = [(st, st + timedelta(minutes=SLOT_MINUTES)) for st in slots]
+
+    # ✅ 라운지 라벨: A, B, C... (2개면 A/G로 하고 싶다면 name이 이미 그 값이면 그대로 표시됨)
+    #  - 화면에서 '라운지 A', '라운지 G' 로 고정 표기 원하면 아래처럼 강제 라벨링:
+    lounge_labels = {}
+    letters = ["A", "G", "B", "C", "D", "E"]  # 앞의 두 개를 A, G로 맞춤
+    for idx, lg in enumerate(lounges):
+        label = letters[idx] if idx < len(letters) else chr(ord("A") + idx)
+        lounge_labels[lg.id] = f"라운지 {label}"
 
     ctx = {
         "target_date": target_date,
-        "slots": slots,                 # (호환성 유지)
-        "slot_pairs": slot_pairs,       # ✅ 신규: (start, end)
+        "slots": slots,
+        "slot_pairs": slot_pairs,
         "lounges": lounges,
         "cell_map": cell_map,
+        "lounge_labels": lounge_labels,
     }
     return render(request, "reservation/schedule.html", ctx)
+
 
 
 @login_required
