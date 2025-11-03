@@ -1,112 +1,103 @@
+{# reservation/templates/reservation/schedule.html #}
 {% load static %}
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <title>기숙사 라운지 예약(30분 슬롯)</title>
-  <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+  <title>기숙사 라운지 예약 (30분 슬롯)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    .container{max-width:1100px;margin:0 auto;padding:1rem}
-    .grid{border-collapse:collapse;width:100%}
-    .grid th,.grid td{border:1px solid #ddd;padding:.65rem;text-align:center}
-    .grid thead th{background:#f6f7fb}
-    .cell-free{background:#e9f7ef}
-    .cell-reserved{background:#fde2e2}
-    .btn{padding:.4rem .8rem;border:1px solid #999;border-radius:6px;background:#fff;cursor:pointer}
-    .btn.primary{background:#0d6efd;color:#fff;border-color:#0d6efd}
-    .btn:disabled{background:#ccc;border-color:#ccc;color:#666;cursor:not-allowed}
-    .names{width:100%;max-width:18rem;padding:.4rem;border:1px solid #ccc;border-radius:6px}
-    .topbar{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap}
-    .muted{color:#666;font-size:.92rem}
-    .notice{
-      margin:.75rem 0 1rem;padding:.9rem 1rem;border:1px solid #e5e7eb;
-      background:#fffbea;border-radius:8px;line-height:1.5
-    }
-    .notice ol{margin:.4rem 0 0 .9rem}
-    .notice li{margin:.2rem 0}
-    .visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    body { font-family: sans-serif; margin: 30px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+    th, td { border: 1px solid #e5e7eb; padding: 10px; text-align: center; }
+    .btn { padding: 8px 12px; border-radius: 6px; border: none; cursor: pointer; }
+    .btn-primary { background:#3b82f6; color:white; }
+    .btn-danger  { background:#ef4444; color:white; }
+    .btn-disabled { background:#e5e7eb; color:#6b7280; cursor:not-allowed;}
+    .notice { background:#fff7ed; border:1px solid #fed7aa; padding:12px; border-radius:8px; margin-bottom:16px;}
+    .msg { margin: 8px 0; color: #2563eb; }
   </style>
 </head>
 <body>
-<div class="container">
-  {% if user.is_authenticated %}
-    <div class="topbar">
-      <p>안녕하세요, <b>{{ user.name }}</b>님 ({{ user.student_number }})</p>
-      <form method="post" action="{% url 'login:logout' %}" style="display:inline;">
-        {% csrf_token %}
-        <button type="submit" class="btn">로그아웃</button>
-      </form>
-    </div>
-  {% endif %}
-
   <h1>기숙사 라운지 예약 (30분 슬롯)</h1>
 
-  <!-- 라운지 이용 안내 -->
   <div class="notice">
-    <b>라운지 이용 안내</b>
-    <ol>
-      <li>학습 용도만 이용(당일 예약)</li>
-      <li>예약은 최대 30분입니다. (3학년 제외) 뒤에 예약자가 없을 경우 30분 단위로 추가 연장 가능</li>
-      <li>선생님께 “라운지 신청했습니다” 연락하고 사용하기</li>
+    <ol style="margin:0; padding-left:18px; line-height:1.6;">
+      <li>학습 용도만 이용 (당일 예약)</li>
+      <li>예약은 최대 30분입니다. 뒤에 예약자가 없으면 30분 추가 가능</li>
       <li>23:30 이후 이용 불가</li>
-      <li>시간 미준수, 뒷정리(소등, 에어컨 off, 문개방) 미흡 및 예약 후 미사용 시 이용 제한</li>
-      <li>신청 가능한 시간 외 이용 시 선생님께 허락 받고 사용하기</li>
+      <li>시간 미준수, 미사용 시 이용 제한</li>
     </ol>
   </div>
 
-  <p class="muted">일요일: 22:00~23:30 (3칸) / 월~목: 21:30~23:30 (4칸) / 금·토: 예약 불가</p>
+  {% if messages %}
+    <div class="msg">
+      {% for message in messages %}
+        <div>{{ message }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
 
-  <form method="get" style="margin:.75rem 0;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-    <input type="date" name="date" value="{{ date|date:'Y-m-d' }}">
-    <button class="btn" type="submit">날짜 이동</button>
+  <form method="get" action="">
+    <label>날짜:
+      <input type="date" name="date" value="{{ target_date|date:'Y-m-d' }}">
+    </label>
+    <button class="btn btn-primary" type="submit">이동</button>
   </form>
 
-  {% if no_slots %}
-    <p><b>해당 요일은 예약할 수 없습니다. (금/토)</b></p>
-  {% else %}
-  <table class="grid" aria-describedby="desc">
-    <caption id="desc" class="visually-hidden">선택한 날짜의 30분 단위 라운지 예약 표</caption>
+  <table>
     <thead>
       <tr>
-        <th>시간</th>
+        <th style="width:180px;">시간</th>
         {% for lg in lounges %}
-          <th>
-            {% if lg.number == 1 %}
-              라운지 A
-            {% elif lg.number == 2 %}
-              라운지 G
-            {% else %}
-              라운지 {{ lg.number }}
-            {% endif %}
-          </th>
+          <th>{{ lg.name }}</th>
         {% endfor %}
       </tr>
     </thead>
     <tbody>
-      {% for row in grid %}
+      {% for st in slots %}
         <tr>
-          <td><b>{{ row.label }}</b></td>
-          {% for cell in row.cells %}
-            <td class="{% if cell.reserved %}cell-reserved{% else %}cell-free{% endif %}">
-              {% if cell.reserved %}
-                <div>{{ cell.by|default:"-" }}</div>
-                <button class="btn" disabled>예약 불가</button>
-              {% else %}
-                <form method="post" action="{% url 'reservation:reserve_slot' cell.number cell.start_key %}" autocomplete="off">
-                  {% csrf_token %}
-                  <input name="names" class="names" placeholder="신청자 이름들(쉼표 구분)" {% if cell.disabled %}disabled{% endif %}>
-                  <button type="submit" class="btn primary" {% if cell.disabled %}disabled{% endif %}>
-                    {% if cell.disabled %}마감{% else %}예약{% endif %}
-                  </button>
-                </form>
-              {% endif %}
-            </td>
+          <td>{{ st|date:"H:i" }} ~ {{ st|add:'00:30'|date:"H:i" }}</td>
+
+          {% for lg in lounges %}
+            {% with reservation=None %}
+              {% for k, v in cell_map.items %}
+                {% if k.0 == lg.id and k.1 == st %}
+                  {% with reservation=v %}{% endwith %}
+                {% endif %}
+              {% endfor %}
+
+              <td>
+                {% if reservation %}
+                  <div style="margin-bottom:6px;">
+                    예약자: {{ reservation.user.get_full_name|default:reservation.user.username }}
+                  </div>
+
+                  {% if reservation.user_id == request.user.id %}
+                    <form method="post" action="{% url 'cancel_reservation' reservation.id %}">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-danger"
+                        onclick="return confirm('정말 예약을 취소하시겠습니까?');">
+                        예약 취소
+                      </button>
+                    </form>
+                  {% else %}
+                    <button class="btn btn-disabled" disabled>예약 불가</button>
+                  {% endif %}
+                {% else %}
+                  <form method="post" action="{% url 'make_reservation' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="lounge_id" value="{{ lg.id }}">
+                    <input type="hidden" name="start" value="{{ st|date:'Y-m-d H:i:s' }}">
+                    <button type="submit" class="btn btn-primary">예약</button>
+                  </form>
+                {% endif %}
+              </td>
+            {% endwith %}
           {% endfor %}
         </tr>
       {% endfor %}
     </tbody>
   </table>
-  {% endif %}
-</div>
 </body>
 </html>

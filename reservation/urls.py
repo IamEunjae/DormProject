@@ -1,9 +1,8 @@
+# reservation/urls.py
 from django.urls import path
 from . import views
 
-app_name = "reservation"
-
 urlpatterns = [
-    path("", views.schedule, name="schedule"),
-    path("reserve-slot/<int:number>/<str:start_key>/", views.reserve_slot, name="reserve_slot"),
+    path('', views.reservation_page, name='reservation_page'),  # 기본 페이지
+    path('cancel/<int:reservation_id>/', views.cancel_reservation, name='cancel_reservation'),
 ]
