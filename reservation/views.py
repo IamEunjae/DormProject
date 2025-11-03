@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, time as dtime, timedelta
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -89,9 +89,15 @@ def reservation_page(request):
     for r in reservations:
         cell_map[(r.lounge_id, r.start_time)] = r
 
+    # ✅ 템플릿에서 종료시간을 안전하게 쓰도록 (시작, 종료) 튜플 제공
+    slot_pairs: List[Tuple[datetime, datetime]] = [
+        (st, st + timedelta(minutes=SLOT_MINUTES)) for st in slots
+    ]
+
     ctx = {
         "target_date": target_date,
-        "slots": slots,
+        "slots": slots,                 # (호환성 유지)
+        "slot_pairs": slot_pairs,       # ✅ 신규: (start, end)
         "lounges": lounges,
         "cell_map": cell_map,
     }
@@ -105,16 +111,10 @@ def make_reservation(request):
     POST body:
       - lounge_id: int
       - start: '%Y-%m-%d %H:%M:%S' (schedule.html에서 보내는 형식)
-    검증:
-      - 허용된 슬롯인지
-      - 과거 시간이 아닌지
-      - 해당 라운지/시간이 비어있는지
-      - (옵션) 본인 예약과 겹치지 않는지
     """
     if request.method != "POST":
         return HttpResponseBadRequest("POST only")
 
-    # 1) 입력 파싱
     lounge_id = request.POST.get("lounge_id")
     start_str = request.POST.get("start")
     if not lounge_id or not start_str:
@@ -128,7 +128,6 @@ def make_reservation(request):
         return redirect("reservation_page")
 
     try:
-        # schedule.html에서 '%Y-%m-%d %H:%M:%S'로 전송
         naive = datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S")
         tz = timezone.get_current_timezone()
         start_dt = timezone.make_aware(naive, tz)
@@ -136,20 +135,17 @@ def make_reservation(request):
         messages.error(request, "시작 시간이 올바르지 않습니다.")
         return redirect("reservation_page")
 
-    # 2) 허용 슬롯 검증
     allowed = allowed_starts_for_date(start_dt.date())
     if start_dt not in allowed:
         messages.error(request, "허용된 시간대가 아닙니다.")
         return redirect(f"/reservation/?date={start_dt.date().isoformat()}")
 
-    # 3) 과거 시간 제한 (원치 않으면 주석 처리)
     if start_dt < timezone.now():
         messages.error(request, "이미 지난 시간은 예약할 수 없습니다.")
         return redirect(f"/reservation/?date={start_dt.date().isoformat()}")
 
     end_dt = start_dt + timedelta(minutes=SLOT_MINUTES)
 
-    # 4) 중복/겹침 체크 (라운지)
     exists = Reservation.objects.filter(
         lounge=lounge, start_time=start_dt, end_time=end_dt
     ).exists()
@@ -157,7 +153,6 @@ def make_reservation(request):
         messages.error(request, "이미 예약된 슬롯입니다.")
         return redirect(f"/reservation/?date={start_dt.date().isoformat()}")
 
-    # 5) 본인 예약 겹침 체크 (동시간대)
     overlap_my = Reservation.objects.filter(
         user=request.user,
         start_time__lt=end_dt,
@@ -167,7 +162,6 @@ def make_reservation(request):
         messages.error(request, "본인 예약과 시간이 겹칩니다.")
         return redirect(f"/reservation/?date={start_dt.date().isoformat()}")
 
-    # 6) 생성
     Reservation.objects.create(
         user=request.user,
         lounge=lounge,
@@ -194,7 +188,6 @@ def cancel_reservation(request, reservation_id: int):
     reservation.delete()
     messages.success(request, "예약이 취소되었습니다.")
 
-    # 사용자가 보고 있던 날짜 유지
     date_str = reservation.start_time.astimezone(
         timezone.get_current_timezone()
     ).date().isoformat()

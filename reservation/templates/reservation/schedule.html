@@ -55,12 +55,14 @@
       </tr>
     </thead>
     <tbody>
-      {% for st in slots %}
+      {# ✅ slot_pairs: (시작, 종료) 튜플 리스트 #}
+      {% for st, end in slot_pairs %}
         <tr>
-          <td>{{ st|date:"H:i" }} ~ {{ st|add:'00:30'|date:"H:i" }}</td>
+          <td>{{ st|date:"H:i" }} ~ {{ end|date:"H:i" }}</td>
 
           {% for lg in lounges %}
             {% with reservation=None %}
+              {# 템플릿에서 dict의 튜플키 직접 접근이 어려워 items를 돌려 찾는다 #}
               {% for k, v in cell_map.items %}
                 {% if k.0 == lg.id and k.1 == st %}
                   {% with reservation=v %}{% endwith %}
