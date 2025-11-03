@@ -16,7 +16,7 @@
     table { width: 100%; border-collapse: collapse; margin-top: 6px; }
     th, td { border: 1px solid #e5e7eb; padding: 12px; text-align: center; }
     th { background:#f9fafb; }
-    .slot-cell { background:#f3faf3; } /* 기존 연한 초록 느낌 */
+    .slot-cell { background:#f3faf3; }
     .btn { padding: 8px 12px; border-radius: 8px; border: none; cursor: pointer; }
     .btn-primary { background:#3b82f6; color:white; }
     .btn-danger  { background:#ef4444; color:white; }
@@ -68,7 +68,7 @@
       <tr>
         <th class="row-time">시간</th>
         {% for lg in lounges %}
-          <th>{{ lounge_labels[lg.id] }}</th>
+          <th>{{ lg.display_label }}</th>
         {% endfor %}
       </tr>
     </thead>
@@ -80,6 +80,7 @@
 
           {% for lg in lounges %}
             {% with reservation=None %}
+              {# cell_map은 키를 (lounge_id, start_time) 튜플로 가짐. items를 돌며 찾는다. #}
               {% for k, v in cell_map.items %}
                 {% if k.0 == lg.id and k.1 == st %}
                   {% with reservation=v %}{% endwith %}

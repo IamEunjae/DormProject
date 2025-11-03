@@ -64,8 +64,13 @@ def reservation_page(request):
     else:
         target_date = timezone.localdate()
 
-    slots = _build_slots_for_date(target_date)
+    slots: List[datetime] = _build_slots_for_date(target_date)
     lounges = list(Lounge.objects.all().order_by("id"))
+
+    # ✅ 라운지 표시 라벨 부여 (A, G 고정)
+    for idx, lg in enumerate(lounges):
+        label = "A" if idx == 0 else ("G" if idx == 1 else chr(ord("A") + idx))
+        setattr(lg, "display_label", f"라운지 {label}")
 
     # 하루 범위 계산
     if slots:
@@ -90,15 +95,9 @@ def reservation_page(request):
         cell_map[(r.lounge_id, r.start_time)] = r
 
     # (시작, 종료) 쌍
-    slot_pairs = [(st, st + timedelta(minutes=SLOT_MINUTES)) for st in slots]
-
-    # ✅ 라운지 라벨: A, B, C... (2개면 A/G로 하고 싶다면 name이 이미 그 값이면 그대로 표시됨)
-    #  - 화면에서 '라운지 A', '라운지 G' 로 고정 표기 원하면 아래처럼 강제 라벨링:
-    lounge_labels = {}
-    letters = ["A", "G", "B", "C", "D", "E"]  # 앞의 두 개를 A, G로 맞춤
-    for idx, lg in enumerate(lounges):
-        label = letters[idx] if idx < len(letters) else chr(ord("A") + idx)
-        lounge_labels[lg.id] = f"라운지 {label}"
+    slot_pairs: List[Tuple[datetime, datetime]] = [
+        (st, st + timedelta(minutes=SLOT_MINUTES)) for st in slots
+    ]
 
     ctx = {
         "target_date": target_date,
@@ -106,10 +105,8 @@ def reservation_page(request):
         "slot_pairs": slot_pairs,
         "lounges": lounges,
         "cell_map": cell_map,
-        "lounge_labels": lounge_labels,
     }
     return render(request, "reservation/schedule.html", ctx)
-
 
 
 @login_required
@@ -143,17 +140,20 @@ def make_reservation(request):
         messages.error(request, "시작 시간이 올바르지 않습니다.")
         return redirect("reservation_page")
 
+    # 허용 슬롯 검증
     allowed = allowed_starts_for_date(start_dt.date())
     if start_dt not in allowed:
         messages.error(request, "허용된 시간대가 아닙니다.")
         return redirect(f"/reservation/?date={start_dt.date().isoformat()}")
 
+    # 과거 시간 제한
     if start_dt < timezone.now():
         messages.error(request, "이미 지난 시간은 예약할 수 없습니다.")
         return redirect(f"/reservation/?date={start_dt.date().isoformat()}")
 
     end_dt = start_dt + timedelta(minutes=SLOT_MINUTES)
 
+    # 중복/겹침 체크 (라운지)
     exists = Reservation.objects.filter(
         lounge=lounge, start_time=start_dt, end_time=end_dt
     ).exists()
@@ -161,6 +161,7 @@ def make_reservation(request):
         messages.error(request, "이미 예약된 슬롯입니다.")
         return redirect(f"/reservation/?date={start_dt.date().isoformat()}")
 
+    # 본인 예약 겹침 체크
     overlap_my = Reservation.objects.filter(
         user=request.user,
         start_time__lt=end_dt,
