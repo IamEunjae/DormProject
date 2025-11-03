@@ -99,12 +99,28 @@ def reservation_page(request):
         (st, st + timedelta(minutes=SLOT_MINUTES)) for st in slots
     ]
 
+    # ✅ 인사말용 표시 이름/아이디(항상 존재하는 get_username 사용)
+    full_name = ""
+    if hasattr(request.user, "get_full_name"):
+        try:
+            full_name = request.user.get_full_name() or ""
+        except Exception:
+            full_name = ""
+    account_id = ""
+    try:
+        account_id = request.user.get_username()
+    except Exception:
+        account_id = str(request.user)
+    display_name = full_name or account_id
+
     ctx = {
         "target_date": target_date,
         "slots": slots,
         "slot_pairs": slot_pairs,
         "lounges": lounges,
         "cell_map": cell_map,
+        "display_name": display_name,
+        "account_id": account_id,
     }
     return render(request, "reservation/schedule.html", ctx)
 

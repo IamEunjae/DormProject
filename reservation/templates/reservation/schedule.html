@@ -32,7 +32,7 @@
   <div class="topbar">
     <h1>기숙사 라운지 예약 (30분 슬롯)</h1>
     <div class="hello">
-      안녕하세요, {{ request.user.get_full_name|default:request.user.username }}님 ({{ request.user.username }})
+      안녕하세요, {{ display_name }}님 ({{ account_id }})
     </div>
   </div>
 
@@ -90,7 +90,7 @@
               <td class="slot-cell">
                 {% if reservation %}
                   <div style="margin-bottom:6px;">
-                    예약자: {{ reservation.user.get_full_name|default:reservation.user.username }}
+                    예약자: {{ reservation.user.get_full_name|default:reservation.user.get_username }}
                   </div>
 
                   {% if reservation.user_id == request.user.id %}
