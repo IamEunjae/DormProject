@@ -13,16 +13,22 @@ from django.urls import reverse
 
 from .models import Lounge, Reservation
 
-# ===== google_sheets.py가 import하는 심볼 =====
+# --- (선택) 구글시트 연동 함수가 있으면 사용, 없으면 무시 ---
+try:
+    # 새 훅(아래 2번 참고)
+    from .google_sheets import append_reservation_with_applicants as _append_with
+except Exception:
+    _append_with = None
+try:
+    # 기존 프로젝트에 있을 수 있는 기본 append
+    from .google_sheets import append_reservation as _append_basic
+except Exception:
+    _append_basic = None
+
 SLOT_MINUTES = 30  # 30분 슬롯
 
+
 def allowed_starts_for_date(target_date) -> List[datetime]:
-    """
-    허용된 시작시각(TZ-aware) 리스트:
-      - 일요일: 22:00, 22:30, 23:00 (22:00~23:30)
-      - 월~목 : 21:30, 22:00, 22:30, 23:00 (21:30~23:30)
-      - 금/토 : 없음
-    """
     tz = timezone.get_current_timezone()
     weekday = target_date.weekday()  # Mon=0 ... Sun=6
     slots: List[datetime] = []
@@ -45,7 +51,6 @@ def allowed_starts_for_date(target_date) -> List[datetime]:
         pass
 
     return slots
-# ===== 여기까지 google_sheets 호환 =====
 
 
 def _build_slots_for_date(target_date):
@@ -54,7 +59,6 @@ def _build_slots_for_date(target_date):
 
 @login_required
 def reservation_page(request):
-    """기숙사 라운지 예약 페이지"""
     date_str = request.GET.get("date")
     if date_str:
         try:
@@ -64,16 +68,14 @@ def reservation_page(request):
     else:
         target_date = timezone.localdate()
 
-    # 시간 슬롯과 라운지 목록
     slots: List[datetime] = _build_slots_for_date(target_date)
     lounges = list(Lounge.objects.all().order_by("id"))
 
-    # 라벨: 라운지 A / 라운지 G (앞 두 칸 고정)
+    # 표시 라벨: 라운지 A / 라운지 G
     for idx, lg in enumerate(lounges):
         label = "A" if idx == 0 else ("G" if idx == 1 else chr(ord("A") + idx))
         setattr(lg, "display_label", f"라운지 {label}")
 
-    # 하루 범위
     if slots:
         day_start = slots[0]
         day_end = slots[-1] + timedelta(minutes=SLOT_MINUTES)
@@ -81,18 +83,15 @@ def reservation_page(request):
         day_start = timezone.now()
         day_end = day_start + timedelta(minutes=SLOT_MINUTES)
 
-    # 해당 날짜의 모든 예약
     reservations = (
         Reservation.objects
         .filter(start_time__gte=day_start, end_time__lte=day_end)
         .select_related("lounge", "user")
     )
 
-    # 빠른 인덱싱용 맵
     slot_index = {st: i for i, st in enumerate(slots)}
     lounge_index = {lg.id: j for j, lg in enumerate(lounges)}
 
-    # grid[row][col] = Reservation | None
     grid: List[List[Reservation | None]] = [
         [None for _ in lounges] for _ in slots
     ]
@@ -102,14 +101,13 @@ def reservation_page(request):
         if i is not None and j is not None:
             grid[i][j] = r
 
-    # rows: [(start, end, [(lounge, reservation), ... ]), ...]
     rows: List[Tuple[datetime, datetime, list]] = []
     for i, st in enumerate(slots):
         end = st + timedelta(minutes=SLOT_MINUTES)
         pairs = [(lounges[j], grid[i][j]) for j in range(len(lounges))]
         rows.append((st, end, pairs))
 
-    # 인사말 표기 (항상 존재하는 get_username 사용)
+    # 인사말 표기
     try:
         account_id = request.user.get_username()
     except Exception:
@@ -125,7 +123,7 @@ def reservation_page(request):
 
     ctx = {
         "target_date": target_date,
-        "rows": rows,                 # ✅ 템플릿은 rows만 보면 됨
+        "rows": rows,
         "lounges": lounges,
         "display_name": display_name,
         "account_id": account_id,
@@ -137,25 +135,30 @@ def reservation_page(request):
 def make_reservation(request):
     """
     30분 1칸 예약 생성.
-    POST body:
+    POST:
       - lounge_id: int
       - start: '%Y-%m-%d %H:%M:%S'
+      - applicant: '이름1, 이름2, ...' (선택)
     """
     if request.method != "POST":
         return HttpResponseBadRequest("POST only")
 
     lounge_id = request.POST.get("lounge_id")
     start_str = request.POST.get("start")
+    applicants_raw = (request.POST.get("applicant") or "").strip()
+
     if not lounge_id or not start_str:
         messages.error(request, "요청 데이터가 올바르지 않습니다.")
         return redirect("reservation_page")
 
+    # 라운지
     try:
         lounge = Lounge.objects.get(id=int(lounge_id))
     except (ValueError, Lounge.DoesNotExist):
         messages.error(request, "라운지를 찾을 수 없습니다.")
         return redirect("reservation_page")
 
+    # 시작 시간
     try:
         naive = datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S")
         tz = timezone.get_current_timezone()
@@ -164,51 +167,74 @@ def make_reservation(request):
         messages.error(request, "시작 시간이 올바르지 않습니다.")
         return redirect("reservation_page")
 
-    # 허용 슬롯 검증
+    # 허용/과거 체크
     allowed = allowed_starts_for_date(start_dt.date())
     if start_dt not in allowed:
         messages.error(request, "허용된 시간대가 아닙니다.")
         return redirect(f"{reverse('reservation_page')}?date={start_dt.date().isoformat()}")
-
-    # 과거 시간 제한
     if start_dt < timezone.now():
         messages.error(request, "이미 지난 시간은 예약할 수 없습니다.")
         return redirect(f"{reverse('reservation_page')}?date={start_dt.date().isoformat()}")
 
     end_dt = start_dt + timedelta(minutes=SLOT_MINUTES)
 
-    # 중복/겹침 체크 (라운지, 같은 슬롯)
-    exists = Reservation.objects.filter(
-        lounge=lounge, start_time=start_dt, end_time=end_dt
-    ).exists()
-    if exists:
+    # 중복/겹침 체크
+    if Reservation.objects.filter(lounge=lounge, start_time=start_dt, end_time=end_dt).exists():
         messages.error(request, "이미 예약된 슬롯입니다.")
         return redirect(f"{reverse('reservation_page')}?date={start_dt.date().isoformat()}")
 
-    # 본인 예약 겹침 체크
-    overlap_my = Reservation.objects.filter(
-        user=request.user,
-        start_time__lt=end_dt,
-        end_time__gt=start_dt,
-    ).exists()
-    if overlap_my:
+    if Reservation.objects.filter(
+        user=request.user, start_time__lt=end_dt, end_time__gt=start_dt
+    ).exists():
         messages.error(request, "본인 예약과 시간이 겹칩니다.")
         return redirect(f"{reverse('reservation_page')}?date={start_dt.date().isoformat()}")
 
-    # 생성
-    Reservation.objects.create(
+    # ---- 신청자 이름들 파싱/정리 ----
+    # 쉼표(,), 전각쉼표(，), 가운뎃점(、) 모두 구분자로 취급
+    import re
+    names = [n.strip() for n in re.split(r"[,\u3001\uFF0C]+", applicants_raw) if n.strip()]
+    # 중복 제거(순서 유지)
+    seen = set()
+    deduped = []
+    for n in names:
+        if n not in seen:
+            deduped.append(n)
+            seen.add(n)
+    applicants_str = ", ".join(deduped) if deduped else ""
+
+    # ---- 예약 생성 ----
+    reservation = Reservation(
         user=request.user,
         lounge=lounge,
         start_time=start_dt,
         end_time=end_dt,
     )
+    # 모델에 어떤 필드가 있는지 프로젝트마다 다를 수 있어 안전하게 처리
+    if hasattr(reservation, "applicant_names"):
+        reservation.applicant_names = applicants_str
+    elif hasattr(reservation, "applicants"):
+        reservation.applicants = applicants_str
+    elif hasattr(reservation, "applicant"):
+        reservation.applicant = applicants_str
+    reservation.save()
+
+    # ---- 구글 시트 반영 (있으면 호출) ----
+    try:
+        if _append_with is not None:
+            _append_with(reservation, applicants_str)
+        elif _append_basic is not None:
+            # 기존 함수가 reservation만 받는 구조라면 이걸로도 반영될 수 있음
+            _append_basic(reservation)
+    except Exception:
+        # 시트 실패해도 웹 예약은 성공으로 유지
+        pass
+
     messages.success(request, "예약이 완료되었습니다.")
     return redirect(f"{reverse('reservation_page')}?date={start_dt.date().isoformat()}")
 
 
 @login_required
 def cancel_reservation(request, reservation_id: int):
-    """본인 예약 취소 (POST만 허용)"""
     if request.method != "POST":
         messages.error(request, "잘못된 접근입니다.")
         return redirect("reservation_page")
