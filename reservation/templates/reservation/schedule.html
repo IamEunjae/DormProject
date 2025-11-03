@@ -68,7 +68,7 @@
       <tr>
         <th class="row-time">시간</th>
         {% for lg in lounges %}
-          <th>{{ lounge_labels.lg.id|default:('라운지 ' ~ forloop.counter0|yesno:"A,G") }}</th>
+          <th>{{ lounge_labels[lg.id] }}</th>
         {% endfor %}
       </tr>
     </thead>
