@@ -9,6 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.urls import reverse  # ✅ 역참조 사용
 
 from .models import Lounge, Reservation
 
@@ -67,7 +68,7 @@ def reservation_page(request):
     slots: List[datetime] = _build_slots_for_date(target_date)
     lounges = list(Lounge.objects.all().order_by("id"))
 
-    # ✅ 라운지 표시 라벨 부여 (A, G 고정)
+    # 라운지 표시 라벨 (A, G 고정)
     for idx, lg in enumerate(lounges):
         label = "A" if idx == 0 else ("G" if idx == 1 else chr(ord("A") + idx))
         setattr(lg, "display_label", f"라운지 {label}")
@@ -99,14 +100,13 @@ def reservation_page(request):
         (st, st + timedelta(minutes=SLOT_MINUTES)) for st in slots
     ]
 
-    # ✅ 인사말용 표시 이름/아이디(항상 존재하는 get_username 사용)
+    # 인사말 표시용 이름
     full_name = ""
     if hasattr(request.user, "get_full_name"):
         try:
             full_name = request.user.get_full_name() or ""
         except Exception:
             full_name = ""
-    account_id = ""
     try:
         account_id = request.user.get_username()
     except Exception:
@@ -131,7 +131,7 @@ def make_reservation(request):
     30분 1칸 예약 생성.
     POST body:
       - lounge_id: int
-      - start: '%Y-%m-%d %H:%M:%S' (schedule.html에서 보내는 형식)
+      - start: '%Y-%m-%d %H:%M:%S'
     """
     if request.method != "POST":
         return HttpResponseBadRequest("POST only")
@@ -156,28 +156,24 @@ def make_reservation(request):
         messages.error(request, "시작 시간이 올바르지 않습니다.")
         return redirect("reservation_page")
 
-    # 허용 슬롯 검증
     allowed = allowed_starts_for_date(start_dt.date())
     if start_dt not in allowed:
         messages.error(request, "허용된 시간대가 아닙니다.")
-        return redirect(f"/reservation/?date={start_dt.date().isoformat()}")
+        return redirect(f"{reverse('reservation_page')}?date={start_dt.date().isoformat()}")
 
-    # 과거 시간 제한
     if start_dt < timezone.now():
         messages.error(request, "이미 지난 시간은 예약할 수 없습니다.")
-        return redirect(f"/reservation/?date={start_dt.date().isoformat()}")
+        return redirect(f"{reverse('reservation_page')}?date={start_dt.date().isoformat()}")
 
     end_dt = start_dt + timedelta(minutes=SLOT_MINUTES)
 
-    # 중복/겹침 체크 (라운지)
     exists = Reservation.objects.filter(
         lounge=lounge, start_time=start_dt, end_time=end_dt
     ).exists()
     if exists:
         messages.error(request, "이미 예약된 슬롯입니다.")
-        return redirect(f"/reservation/?date={start_dt.date().isoformat()}")
+        return redirect(f"{reverse('reservation_page')}?date={start_dt.date().isoformat()}")
 
-    # 본인 예약 겹침 체크
     overlap_my = Reservation.objects.filter(
         user=request.user,
         start_time__lt=end_dt,
@@ -185,7 +181,7 @@ def make_reservation(request):
     ).exists()
     if overlap_my:
         messages.error(request, "본인 예약과 시간이 겹칩니다.")
-        return redirect(f"/reservation/?date={start_dt.date().isoformat()}")
+        return redirect(f"{reverse('reservation_page')}?date={start_dt.date().isoformat()}")
 
     Reservation.objects.create(
         user=request.user,
@@ -194,7 +190,7 @@ def make_reservation(request):
         end_time=end_dt,
     )
     messages.success(request, "예약이 완료되었습니다.")
-    return redirect(f"/reservation/?date={start_dt.date().isoformat()}")
+    return redirect(f"{reverse('reservation_page')}?date={start_dt.date().isoformat()}")
 
 
 @login_required
@@ -216,4 +212,5 @@ def cancel_reservation(request, reservation_id: int):
     date_str = reservation.start_time.astimezone(
         timezone.get_current_timezone()
     ).date().isoformat()
-    return redirect(f"/reservation/?date={date_str}")
+    # ✅ 하드코딩 대신 reverse 사용
+    return redirect(f"{reverse('reservation_page')}?date={date_str}")
